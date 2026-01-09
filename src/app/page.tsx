@@ -1,65 +1,211 @@
-import Image from "next/image";
+'use client'
+
+import { useState } from 'react'
+import {
+  Box,
+  Container,
+  Heading,
+  Input,
+  Button,
+  VStack,
+  HStack,
+  Text,
+  Checkbox,
+  IconButton,
+  Flex,
+  useColorModeValue,
+} from '@chakra-ui/react'
+import { DeleteIcon, AddIcon } from '@chakra-ui/icons'
+
+interface Todo {
+  id: number
+  text: string
+  completed: boolean
+}
 
 export default function Home() {
+  const [todos, setTodos] = useState<Todo[]>([
+    { id: 1, text: 'Chakra UI öğren', completed: false },
+    { id: 2, text: 'Todo app yap', completed: true },
+    { id: 3, text: 'Projeyi deploy et', completed: false },
+  ])
+  const [newTodo, setNewTodo] = useState('')
+
+  const bgColor = useColorModeValue('gray.50', 'gray.900')
+  const cardBg = useColorModeValue('white', 'gray.800')
+  const borderColor = useColorModeValue('gray.200', 'gray.700')
+
+  const addTodo = () => {
+    if (newTodo.trim() === '') return
+    const todo: Todo = {
+      id: Date.now(),
+      text: newTodo.trim(),
+      completed: false,
+    }
+    setTodos([...todos, todo])
+    setNewTodo('')
+  }
+
+  const toggleTodo = (id: number) => {
+    setTodos(
+      todos.map((todo) =>
+        todo.id === id ? { ...todo, completed: !todo.completed } : todo
+      )
+    )
+  }
+
+  const deleteTodo = (id: number) => {
+    setTodos(todos.filter((todo) => todo.id !== id))
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      addTodo()
+    }
+  }
+
+  const completedCount = todos.filter((t) => t.completed).length
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <Box minH="100vh" bg={bgColor} py={10}>
+      <Container maxW="container.md">
+        {/* Header */}
+        <VStack spacing={2} mb={8}>
+          <Heading
+            as="h1"
+            size="2xl"
+            bgGradient="linear(to-r, teal.400, blue.500)"
+            bgClip="text"
+            fontWeight="extrabold"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            toedo
+          </Heading>
+          <Text color="gray.500" fontSize="lg">
+            Basit ve şık yapılacaklar listesi
+          </Text>
+        </VStack>
+
+        {/* Add Todo Form */}
+        <Box
+          bg={cardBg}
+          p={6}
+          borderRadius="xl"
+          boxShadow="lg"
+          border="1px"
+          borderColor={borderColor}
+          mb={6}
+        >
+          <HStack>
+            <Input
+              placeholder="Yeni görev ekle..."
+              value={newTodo}
+              onChange={(e) => setNewTodo(e.target.value)}
+              onKeyPress={handleKeyPress}
+              size="lg"
+              borderRadius="lg"
+              focusBorderColor="teal.400"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <Button
+              colorScheme="teal"
+              size="lg"
+              onClick={addTodo}
+              leftIcon={<AddIcon />}
+              borderRadius="lg"
+              px={6}
+              variant="solid"
+            >
+              Ekle
+            </Button>
+          </HStack>
+        </Box>
+
+        {/* Todo List */}
+        <Box
+          bg={cardBg}
+          borderRadius="xl"
+          boxShadow="lg"
+          border="1px"
+          borderColor={borderColor}
+          overflow="hidden"
+        >
+          {/* Stats Header */}
+          <Flex
+            px={6}
+            py={4}
+            borderBottom="1px"
+            borderColor={borderColor}
+            justify="space-between"
+            align="center"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+            <Text fontWeight="semibold" color="gray.600">
+              Görevlerim
+            </Text>
+            <HStack spacing={4}>
+              <Text fontSize="sm" color="gray.500">
+                {completedCount} / {todos.length} tamamlandı
+              </Text>
+            </HStack>
+          </Flex>
+
+          {/* Todo Items */}
+          <VStack spacing={0} align="stretch">
+            {todos.length === 0 ? (
+              <Box py={12} textAlign="center">
+                <Text color="gray.400" fontSize="lg">
+                  Henüz görev eklenmemiş 📝
+                </Text>
+                <Text color="gray.400" fontSize="sm" mt={2}>
+                  Yukarıdaki alana yazarak yeni görev ekleyebilirsin
+                </Text>
+              </Box>
+            ) : (
+              todos.map((todo, index) => (
+                <HStack
+                  key={todo.id}
+                  px={6}
+                  py={4}
+                  borderBottom={index < todos.length - 1 ? '1px' : 'none'}
+                  borderColor={borderColor}
+                  _hover={{ bg: useColorModeValue('gray.50', 'gray.700') }}
+                  transition="background 0.2s"
+                  justify="space-between"
+                >
+                  <HStack spacing={4} flex={1}>
+                    <Checkbox
+                      isChecked={todo.completed}
+                      onChange={() => toggleTodo(todo.id)}
+                      colorScheme="teal"
+                      size="lg"
+                    />
+                    <Text
+                      fontSize="md"
+                      textDecoration={todo.completed ? 'line-through' : 'none'}
+                      color={todo.completed ? 'gray.400' : 'inherit'}
+                      transition="all 0.2s"
+                    >
+                      {todo.text}
+                    </Text>
+                  </HStack>
+                  <IconButton
+                    aria-label="Görevi sil"
+                    icon={<DeleteIcon />}
+                    size="sm"
+                    colorScheme="red"
+                    variant="ghost"
+                    onClick={() => deleteTodo(todo.id)}
+                    _hover={{ bg: 'red.100' }}
+                  />
+                </HStack>
+              ))
+            )}
+          </VStack>
+        </Box>
+
+        {/* Footer */}
+        <Text textAlign="center" mt={8} color="gray.400" fontSize="sm">
+          toedo ile görevlerini takip et ✨
+        </Text>
+      </Container>
+    </Box>
+  )
 }
