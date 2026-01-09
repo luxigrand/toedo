@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Box,
   Container,
@@ -14,48 +14,125 @@ import {
   IconButton,
   Flex,
   useColorModeValue,
+  Spinner,
+  useToast,
 } from '@chakra-ui/react'
 import { DeleteIcon, AddIcon } from '@chakra-ui/icons'
-
-interface Todo {
-  id: number
-  text: string
-  completed: boolean
-}
+import { supabase } from '@/lib/supabase'
+import type { Todo } from '@/lib/database.types'
 
 export default function Home() {
-  const [todos, setTodos] = useState<Todo[]>([
-    { id: 1, text: 'Chakra UI öğren', completed: false },
-    { id: 2, text: 'Todo app yap', completed: true },
-    { id: 3, text: 'Projeyi deploy et', completed: false },
-  ])
+  const [todos, setTodos] = useState<Todo[]>([])
   const [newTodo, setNewTodo] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const toast = useToast()
 
   const bgColor = useColorModeValue('gray.50', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
-  const addTodo = () => {
-    if (newTodo.trim() === '') return
-    const todo: Todo = {
-      id: Date.now(),
-      text: newTodo.trim(),
-      completed: false,
+  // Fetch todos on mount
+  useEffect(() => {
+    fetchTodos()
+  }, [])
+
+  const fetchTodos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('todos')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setTodos(data || [])
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Görevler yüklenirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setLoading(false)
     }
-    setTodos([...todos, todo])
-    setNewTodo('')
   }
 
-  const toggleTodo = (id: number) => {
-    setTodos(
-      todos.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
+  const addTodo = async () => {
+    if (newTodo.trim() === '') return
+
+    setAdding(true)
+    try {
+      const { data, error } = await supabase
+        .from('todos')
+        .insert({ text: newTodo.trim() })
+        .select()
+        .single()
+
+      if (error) throw error
+      setTodos([data, ...todos])
+      setNewTodo('')
+      toast({
+        title: 'Başarılı',
+        description: 'Görev eklendi',
+        status: 'success',
+        duration: 2000,
+      })
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Görev eklenirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const toggleTodo = async (id: number, completed: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('todos')
+        .update({ completed: !completed })
+        .eq('id', id)
+
+      if (error) throw error
+      setTodos(
+        todos.map((todo) =>
+          todo.id === id ? { ...todo, completed: !completed } : todo
+        )
       )
-    )
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Görev güncellenirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    }
   }
 
-  const deleteTodo = (id: number) => {
-    setTodos(todos.filter((todo) => todo.id !== id))
+  const deleteTodo = async (id: number) => {
+    try {
+      const { error } = await supabase.from('todos').delete().eq('id', id)
+
+      if (error) throw error
+      setTodos(todos.filter((todo) => todo.id !== id))
+      toast({
+        title: 'Başarılı',
+        description: 'Görev silindi',
+        status: 'success',
+        duration: 2000,
+      })
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Görev silinirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -104,15 +181,18 @@ export default function Home() {
               size="lg"
               borderRadius="lg"
               focusBorderColor="teal.400"
+              disabled={adding}
             />
             <Button
               colorScheme="teal"
               size="lg"
               onClick={addTodo}
-              leftIcon={<AddIcon />}
+              leftIcon={adding ? <Spinner size="sm" /> : <AddIcon />}
               borderRadius="lg"
               px={6}
               variant="solid"
+              isLoading={adding}
+              loadingText="Ekleniyor"
             >
               Ekle
             </Button>
@@ -149,7 +229,14 @@ export default function Home() {
 
           {/* Todo Items */}
           <VStack spacing={0} align="stretch">
-            {todos.length === 0 ? (
+            {loading ? (
+              <Box py={12} textAlign="center">
+                <Spinner size="lg" color="teal.400" />
+                <Text color="gray.400" fontSize="lg" mt={4}>
+                  Görevler yükleniyor...
+                </Text>
+              </Box>
+            ) : todos.length === 0 ? (
               <Box py={12} textAlign="center">
                 <Text color="gray.400" fontSize="lg">
                   Henüz görev eklenmemiş 📝
@@ -173,7 +260,7 @@ export default function Home() {
                   <HStack spacing={4} flex={1}>
                     <Checkbox
                       isChecked={todo.completed}
-                      onChange={() => toggleTodo(todo.id)}
+                      onChange={() => toggleTodo(todo.id, todo.completed)}
                       colorScheme="teal"
                       size="lg"
                     />
