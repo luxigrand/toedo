@@ -54,7 +54,7 @@ function HomeContent() {
   const fetchTodos = async () => {
     try {
       const { data, error } = await supabase
-        .from('todos')
+        .from('todo')
         .select('*')
         .order('created_at', { ascending: false })
 
@@ -85,7 +85,7 @@ function HomeContent() {
     setAdding(true)
     try {
       const { data, error } = await supabase
-        .from('todos')
+        .from('todo')
         .insert({ text: newTodo.trim() })
         .select()
         .single()
@@ -114,7 +114,7 @@ function HomeContent() {
   const toggleTodo = async (id: number, completed: boolean) => {
     try {
       const { error } = await supabase
-        .from('todos')
+        .from('todo')
         .update({ completed: !completed })
         .eq('id', id)
 
@@ -136,7 +136,7 @@ function HomeContent() {
 
   const deleteTodo = async (id: number) => {
     try {
-      const { error } = await supabase.from('todos').delete().eq('id', id)
+      const { error } = await supabase.from('todo').delete().eq('id', id)
 
       if (error) throw error
       setTodos(todos.filter((todo) => todo.id !== id))

@@ -9,7 +9,7 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      todos: {
+      todo: {
         Row: {
           id: number
           text: string
@@ -46,4 +46,4 @@ export interface Database {
   }
 }
 
-export type Todo = Database['public']['Tables']['todos']['Row']
+export type Todo = Database['public']['Tables']['todo']['Row']
