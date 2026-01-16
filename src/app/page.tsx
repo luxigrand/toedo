@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Box,
   Container,
@@ -27,14 +27,23 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const toast = useToast()
+  const isInitialLoad = useRef(true)
 
   const bgColor = useColorModeValue('gray.50', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
-  // Fetch todos on mount
+  // Fetch todos on mount and set up interval for realtime updates
   useEffect(() => {
     fetchTodos()
+
+    // Set up interval to refresh todos every 1.5 seconds (between 1-2 seconds)
+    const interval = setInterval(() => {
+      fetchTodos()
+    }, 1500)
+
+    // Cleanup interval on unmount
+    return () => clearInterval(interval)
   }, [])
 
   const fetchTodos = async () => {
@@ -47,14 +56,21 @@ export default function Home() {
       if (error) throw error
       setTodos(data || [])
     } catch (error) {
-      toast({
-        title: 'Hata',
-        description: 'Görevler yüklenirken bir hata oluştu',
-        status: 'error',
-        duration: 3000,
-      })
+      // Only show error toast if it's not the initial load (to avoid spam)
+      if (isInitialLoad.current) {
+        toast({
+          title: 'Hata',
+          description: 'Görevler yüklenirken bir hata oluştu',
+          status: 'error',
+          duration: 3000,
+        })
+      }
     } finally {
-      setLoading(false)
+      // Only set loading to false on initial load
+      if (isInitialLoad.current) {
+        setLoading(false)
+        isInitialLoad.current = false
+      }
     }
   }
 
