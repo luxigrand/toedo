@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Box,
   Container,
@@ -20,14 +21,18 @@ import {
 import { DeleteIcon, AddIcon } from '@chakra-ui/icons'
 import { supabase } from '@/lib/supabase'
 import type { Todo } from '@/lib/database.types'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { useAuth } from '@/hooks/useAuth'
 
-export default function Home() {
+function HomeContent() {
   const [todos, setTodos] = useState<Todo[]>([])
   const [newTodo, setNewTodo] = useState('')
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const toast = useToast()
   const isInitialLoad = useRef(true)
+  const { user, signOut } = useAuth()
+  const router = useRouter()
 
   const bgColor = useColorModeValue('gray.50', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -159,24 +164,59 @@ export default function Home() {
 
   const completedCount = todos.filter((t) => t.completed).length
 
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      toast({
+        title: 'Başarılı',
+        description: 'Çıkış yapıldı',
+        status: 'success',
+        duration: 2000,
+      })
+      router.push('/login')
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Çıkış yapılırken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    }
+  }
+
   return (
     <Box minH="100vh" bg={bgColor} py={10}>
       <Container maxW="container.md">
         {/* Header */}
-        <VStack spacing={2} mb={8}>
-          <Heading
-            as="h1"
-            size="2xl"
-            bgGradient="linear(to-r, teal.400, blue.500)"
-            bgClip="text"
-            fontWeight="extrabold"
+        <Flex justify="space-between" align="center" mb={8}>
+          <VStack spacing={2} align="flex-start">
+            <Heading
+              as="h1"
+              size="2xl"
+              bgGradient="linear(to-r, teal.400, blue.500)"
+              bgClip="text"
+              fontWeight="extrabold"
+            >
+              toedo
+            </Heading>
+            <Text color="gray.500" fontSize="lg">
+              Basit ve şık yapılacaklar listesi
+            </Text>
+            {user && (
+              <Text color="gray.400" fontSize="sm">
+                {user.email}
+              </Text>
+            )}
+          </VStack>
+          <Button
+            colorScheme="red"
+            variant="outline"
+            onClick={handleLogout}
+            size="md"
           >
-            toedo
-          </Heading>
-          <Text color="gray.500" fontSize="lg">
-            Basit ve şık yapılacaklar listesi
-          </Text>
-        </VStack>
+            Çıkış Yap
+          </Button>
+        </Flex>
 
         {/* Add Todo Form */}
         <Box
@@ -310,5 +350,13 @@ export default function Home() {
         </Text>
       </Container>
     </Box>
+  )
+}
+
+export default function Home() {
+  return (
+    <ProtectedRoute>
+      <HomeContent />
+    </ProtectedRoute>
   )
 }
