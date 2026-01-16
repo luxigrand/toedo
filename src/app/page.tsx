@@ -18,17 +18,26 @@ import {
   Spinner,
   useToast,
 } from '@chakra-ui/react'
-import { DeleteIcon, AddIcon } from '@chakra-ui/icons'
+import { DeleteIcon, AddIcon, EditIcon, CheckIcon, CloseIcon } from '@chakra-ui/icons'
 import { supabase } from '@/lib/supabase'
-import type { Todo } from '@/lib/database.types'
+import type { Todo, Workspace } from '@/lib/database.types'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useAuth } from '@/hooks/useAuth'
 
 function HomeContent() {
   const [todos, setTodos] = useState<Todo[]>([])
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(null)
   const [newTodo, setNewTodo] = useState('')
+  const [newWorkspaceName, setNewWorkspaceName] = useState('')
+  const [editingWorkspaceId, setEditingWorkspaceId] = useState<number | null>(null)
+  const [editingWorkspaceName, setEditingWorkspaceName] = useState('')
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false)
+  const [updatingWorkspace, setUpdatingWorkspace] = useState(false)
+  const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<number | null>(null)
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState(true)
   const toast = useToast()
   const isInitialLoad = useRef(true)
   const { user, signOut } = useAuth()
@@ -38,24 +47,248 @@ function HomeContent() {
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
-  // Fetch todos on mount and set up interval for realtime updates
+  const createDefaultWorkspace = async () => {
+    if (!user?.id) return
+
+    try {
+      const { data, error } = await supabase
+        .from('workspace')
+        .insert({ name: 'Adsız alan', user_id: user.id })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      if (data) {
+        setWorkspaces([data])
+        setSelectedWorkspaceId(data.id)
+      }
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Varsayılan workspace oluşturulurken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    }
+  }
+
+  const initializeWorkspaces = async () => {
+    if (!user?.id) return
+
+    setLoadingWorkspaces(true)
+    try {
+      const { data, error } = await supabase
+        .from('workspace')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+
+      if (data && data.length > 0) {
+        setWorkspaces(data)
+        setSelectedWorkspaceId(data[0].id)
+      } else {
+        // Auto-create default workspace if none exists
+        await createDefaultWorkspace()
+      }
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Workspace\'ler yüklenirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setLoadingWorkspaces(false)
+    }
+  }
+
+  // Fetch workspaces and set up workspace management
   useEffect(() => {
-    fetchTodos()
+    if (user?.id) {
+      initializeWorkspaces()
+    }
+  }, [user?.id])
 
-    // Set up interval to refresh todos every 1.5 seconds (between 1-2 seconds)
-    const interval = setInterval(() => {
+  // Fetch todos when workspace changes
+  useEffect(() => {
+    if (selectedWorkspaceId && user?.id) {
       fetchTodos()
-    }, 1500)
 
-    // Cleanup interval on unmount
-    return () => clearInterval(interval)
-  }, [])
+      // Set up interval to refresh todos every 1.5 seconds (between 1-2 seconds)
+      const interval = setInterval(() => {
+        fetchTodos()
+      }, 1500)
+
+      // Cleanup interval on unmount
+      return () => clearInterval(interval)
+    }
+  }, [selectedWorkspaceId, user?.id])
+
+  const fetchWorkspaces = async () => {
+    if (!user?.id) return
+
+    try {
+      const { data, error } = await supabase
+        .from('workspace')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+      setWorkspaces(data || [])
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Workspace\'ler yüklenirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    }
+  }
+
+  const createWorkspace = async () => {
+    if (!user?.id || newWorkspaceName.trim() === '') return
+
+    setCreatingWorkspace(true)
+    try {
+      const { data, error } = await supabase
+        .from('workspace')
+        .insert({ name: newWorkspaceName.trim() || 'Adsız alan', user_id: user.id })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      if (data) {
+        setWorkspaces([...workspaces, data])
+        setSelectedWorkspaceId(data.id)
+        setNewWorkspaceName('')
+        toast({
+          title: 'Başarılı',
+          description: 'Workspace oluşturuldu',
+          status: 'success',
+          duration: 2000,
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Workspace oluşturulurken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setCreatingWorkspace(false)
+    }
+  }
+
+  const startEditWorkspace = (workspace: Workspace) => {
+    setEditingWorkspaceId(workspace.id)
+    setEditingWorkspaceName(workspace.name || '')
+  }
+
+  const cancelEditWorkspace = () => {
+    setEditingWorkspaceId(null)
+    setEditingWorkspaceName('')
+  }
+
+  const updateWorkspace = async (workspaceId: number) => {
+    if (!user?.id || editingWorkspaceName.trim() === '') return
+
+    setUpdatingWorkspace(true)
+    try {
+      const { data, error } = await supabase
+        .from('workspace')
+        .update({ name: editingWorkspaceName.trim() || 'Adsız alan' })
+        .eq('id', workspaceId)
+        .eq('user_id', user.id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      if (data) {
+        setWorkspaces(workspaces.map((w) => (w.id === workspaceId ? data : w)))
+        setEditingWorkspaceId(null)
+        setEditingWorkspaceName('')
+        toast({
+          title: 'Başarılı',
+          description: 'Workspace adı güncellendi',
+          status: 'success',
+          duration: 2000,
+        })
+      }
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Workspace güncellenirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setUpdatingWorkspace(false)
+    }
+  }
+
+  const deleteWorkspace = async (workspaceId: number) => {
+    if (!user?.id || workspaces.length <= 1) {
+      toast({
+        title: 'Uyarı',
+        description: 'En az bir workspace olmalıdır',
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
+    setDeletingWorkspaceId(workspaceId)
+    try {
+      const { error } = await supabase
+        .from('workspace')
+        .delete()
+        .eq('id', workspaceId)
+        .eq('user_id', user.id)
+
+      if (error) throw error
+
+      const remainingWorkspaces = workspaces.filter((w) => w.id !== workspaceId)
+      setWorkspaces(remainingWorkspaces)
+
+      // If deleted workspace was selected, select the first available one
+      if (selectedWorkspaceId === workspaceId) {
+        setSelectedWorkspaceId(remainingWorkspaces[0]?.id || null)
+      }
+
+      toast({
+        title: 'Başarılı',
+        description: 'Workspace silindi',
+        status: 'success',
+        duration: 2000,
+      })
+    } catch (error) {
+      toast({
+        title: 'Hata',
+        description: 'Workspace silinirken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setDeletingWorkspaceId(null)
+    }
+  }
 
   const fetchTodos = async () => {
+    if (!selectedWorkspaceId || !user?.id) return
+
     try {
       const { data, error } = await supabase
         .from('todo')
         .select('*')
+        .eq('workspace_id', selectedWorkspaceId)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -80,13 +313,17 @@ function HomeContent() {
   }
 
   const addTodo = async () => {
-    if (newTodo.trim() === '') return
+    if (newTodo.trim() === '' || !selectedWorkspaceId || !user?.id) return
 
     setAdding(true)
     try {
       const { data, error } = await supabase
         .from('todo')
-        .insert({ text: newTodo.trim() })
+        .insert({ 
+          text: newTodo.trim(),
+          workspace_id: selectedWorkspaceId,
+          user_id: user.id
+        })
         .select()
         .single()
 
@@ -112,11 +349,15 @@ function HomeContent() {
   }
 
   const toggleTodo = async (id: number, completed: boolean) => {
+    if (!selectedWorkspaceId || !user?.id) return
+
     try {
       const { error } = await supabase
         .from('todo')
         .update({ completed: !completed })
         .eq('id', id)
+        .eq('workspace_id', selectedWorkspaceId)
+        .eq('user_id', user.id)
 
       if (error) throw error
       setTodos(
@@ -135,8 +376,15 @@ function HomeContent() {
   }
 
   const deleteTodo = async (id: number) => {
+    if (!selectedWorkspaceId || !user?.id) return
+
     try {
-      const { error } = await supabase.from('todo').delete().eq('id', id)
+      const { error } = await supabase
+        .from('todo')
+        .delete()
+        .eq('id', id)
+        .eq('workspace_id', selectedWorkspaceId)
+        .eq('user_id', user.id)
 
       if (error) throw error
       setTodos(todos.filter((todo) => todo.id !== id))
@@ -163,6 +411,7 @@ function HomeContent() {
   }
 
   const completedCount = todos.filter((t) => t.completed).length
+  const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId)
 
   const handleLogout = async () => {
     try {
@@ -218,6 +467,202 @@ function HomeContent() {
           </Button>
         </Flex>
 
+        {/* Workspace Management */}
+        <Box
+          bg={cardBg}
+          p={6}
+          borderRadius="xl"
+          boxShadow="lg"
+          border="1px"
+          borderColor={borderColor}
+          mb={6}
+        >
+          <VStack spacing={4} align="stretch">
+            {/* Header */}
+            <Flex justify="space-between" align="center">
+              <Heading size="md" color="gray.700">
+                Workspace'lerim
+              </Heading>
+              <HStack>
+                <Input
+                  placeholder="Yeni workspace adı..."
+                  value={newWorkspaceName}
+                  onChange={(e) => setNewWorkspaceName(e.target.value)}
+                  size="md"
+                  maxW="250px"
+                  borderRadius="lg"
+                  focusBorderColor="teal.400"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      createWorkspace()
+                    }
+                  }}
+                />
+                <Button
+                  colorScheme="teal"
+                  size="md"
+                  onClick={createWorkspace}
+                  leftIcon={creatingWorkspace ? <Spinner size="sm" /> : <AddIcon />}
+                  borderRadius="lg"
+                  isLoading={creatingWorkspace}
+                  loadingText="Oluşturuluyor"
+                  isDisabled={!newWorkspaceName.trim()}
+                >
+                  Ekle
+                </Button>
+              </HStack>
+            </Flex>
+
+            {/* Workspace List */}
+            {loadingWorkspaces ? (
+              <Box py={8} textAlign="center">
+                <Spinner size="lg" color="teal.400" />
+                <Text color="gray.400" fontSize="sm" mt={2}>
+                  Workspace'ler yükleniyor...
+                </Text>
+              </Box>
+            ) : workspaces.length === 0 ? (
+              <Box py={8} textAlign="center">
+                <Text color="gray.400" fontSize="md">
+                  Henüz workspace yok. Yukarıdan yeni bir workspace oluşturun.
+                </Text>
+              </Box>
+            ) : (
+              <VStack spacing={2} align="stretch">
+                {workspaces.map((workspace) => (
+                  <Box
+                    key={workspace.id}
+                    p={4}
+                    borderRadius="lg"
+                    border="2px"
+                    borderColor={
+                      selectedWorkspaceId === workspace.id
+                        ? 'teal.400'
+                        : borderColor
+                    }
+                    bg={
+                      selectedWorkspaceId === workspace.id
+                        ? useColorModeValue('teal.50', 'teal.900')
+                        : 'transparent'
+                    }
+                    _hover={{
+                      borderColor: 'teal.300',
+                      bg: useColorModeValue('gray.50', 'gray.700'),
+                    }}
+                    transition="all 0.2s"
+                    cursor="pointer"
+                    onClick={() => setSelectedWorkspaceId(workspace.id)}
+                  >
+                    <Flex justify="space-between" align="center">
+                      <HStack flex={1} spacing={3}>
+                        {editingWorkspaceId === workspace.id ? (
+                          <HStack flex={1} spacing={2}>
+                            <Input
+                              value={editingWorkspaceName}
+                              onChange={(e) =>
+                                setEditingWorkspaceName(e.target.value)
+                              }
+                              size="sm"
+                              borderRadius="md"
+                              focusBorderColor="teal.400"
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  updateWorkspace(workspace.id)
+                                } else if (e.key === 'Escape') {
+                                  cancelEditWorkspace()
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
+                            />
+                            <IconButton
+                              aria-label="Kaydet"
+                              icon={<CheckIcon />}
+                              size="sm"
+                              colorScheme="teal"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                updateWorkspace(workspace.id)
+                              }}
+                              isLoading={updatingWorkspace}
+                            />
+                            <IconButton
+                              aria-label="İptal"
+                              icon={<CloseIcon />}
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                cancelEditWorkspace()
+                              }}
+                            />
+                          </HStack>
+                        ) : (
+                          <>
+                            <Box
+                              w="12px"
+                              h="12px"
+                              borderRadius="full"
+                              bg={
+                                selectedWorkspaceId === workspace.id
+                                  ? 'teal.400'
+                                  : 'gray.300'
+                              }
+                            />
+                            <Text
+                              fontWeight={
+                                selectedWorkspaceId === workspace.id
+                                  ? 'semibold'
+                                  : 'normal'
+                              }
+                              color={
+                                selectedWorkspaceId === workspace.id
+                                  ? 'teal.600'
+                                  : 'gray.700'
+                              }
+                              fontSize="md"
+                            >
+                              {workspace.name || 'Adsız alan'}
+                            </Text>
+                          </>
+                        )}
+                      </HStack>
+                      {editingWorkspaceId !== workspace.id && (
+                        <HStack spacing={1}>
+                          <IconButton
+                            aria-label="Düzenle"
+                            icon={<EditIcon />}
+                            size="sm"
+                            colorScheme="blue"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              startEditWorkspace(workspace)
+                            }}
+                          />
+                          <IconButton
+                            aria-label="Sil"
+                            icon={<DeleteIcon />}
+                            size="sm"
+                            colorScheme="red"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteWorkspace(workspace.id)
+                            }}
+                            isLoading={deletingWorkspaceId === workspace.id}
+                            isDisabled={workspaces.length <= 1}
+                          />
+                        </HStack>
+                      )}
+                    </Flex>
+                  </Box>
+                ))}
+              </VStack>
+            )}
+          </VStack>
+        </Box>
+
         {/* Add Todo Form */}
         <Box
           bg={cardBg}
@@ -230,14 +675,14 @@ function HomeContent() {
         >
           <HStack>
             <Input
-              placeholder="Yeni görev ekle..."
+              placeholder={selectedWorkspaceId ? "Yeni görev ekle..." : "Workspace seçin..."}
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
               onKeyPress={handleKeyPress}
               size="lg"
               borderRadius="lg"
               focusBorderColor="teal.400"
-              disabled={adding}
+              disabled={adding || !selectedWorkspaceId}
             />
             <Button
               colorScheme="teal"
@@ -249,6 +694,7 @@ function HomeContent() {
               variant="solid"
               isLoading={adding}
               loadingText="Ekleniyor"
+              disabled={!selectedWorkspaceId}
             >
               Ekle
             </Button>
@@ -274,7 +720,7 @@ function HomeContent() {
             align="center"
           >
             <Text fontWeight="semibold" color="gray.600">
-              Görevlerim
+              {selectedWorkspace ? `${selectedWorkspace.name || 'Adsız alan'} - Görevlerim` : 'Görevlerim'}
             </Text>
             <HStack spacing={4}>
               <Text fontSize="sm" color="gray.500">
@@ -285,11 +731,17 @@ function HomeContent() {
 
           {/* Todo Items */}
           <VStack spacing={0} align="stretch">
-            {loading ? (
+            {loadingWorkspaces || loading ? (
               <Box py={12} textAlign="center">
                 <Spinner size="lg" color="teal.400" />
                 <Text color="gray.400" fontSize="lg" mt={4}>
-                  Görevler yükleniyor...
+                  {loadingWorkspaces ? 'Workspace\'ler yükleniyor...' : 'Görevler yükleniyor...'}
+                </Text>
+              </Box>
+            ) : !selectedWorkspaceId ? (
+              <Box py={12} textAlign="center">
+                <Text color="gray.400" fontSize="lg">
+                  Lütfen bir workspace seçin
                 </Text>
               </Box>
             ) : todos.length === 0 ? (
