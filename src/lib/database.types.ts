@@ -49,18 +49,24 @@ export interface Database {
           name: string | null
           user_id: string | null
           created_at: string
+          is_public: boolean | null
+          password: string | null
         }
         Insert: {
           id?: number
           name?: string | null
           user_id?: string | null
           created_at?: string
+          is_public?: boolean | null
+          password?: string | null
         }
         Update: {
           id?: number
           name?: string | null
           user_id?: string | null
           created_at?: string
+          is_public?: boolean | null
+          password?: string | null
         }
         Relationships: []
       }

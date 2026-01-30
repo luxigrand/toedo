@@ -17,12 +17,25 @@ import {
   useColorModeValue,
   Spinner,
   useToast,
+  Badge,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalCloseButton,
+  InputGroup,
+  InputRightElement,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react'
-import { DeleteIcon, AddIcon, EditIcon, CheckIcon, CloseIcon } from '@chakra-ui/icons'
+import { DeleteIcon, AddIcon, EditIcon, CheckIcon, CloseIcon, SettingsIcon, LockIcon, ViewIcon, ViewOffIcon } from '@chakra-ui/icons'
 import { supabase } from '@/lib/supabase'
 import type { Todo, Workspace } from '@/lib/database.types'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { useAuth } from '@/hooks/useAuth'
+import { WorkspaceSettings } from '@/components/WorkspaceSettings'
 
 function HomeContent() {
   const [todos, setTodos] = useState<Todo[]>([])
@@ -38,6 +51,12 @@ function HomeContent() {
   const [updatingWorkspace, setUpdatingWorkspace] = useState(false)
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<number | null>(null)
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(true)
+  const [settingsWorkspaceId, setSettingsWorkspaceId] = useState<number | null>(null)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [joinWorkspaceId, setJoinWorkspaceId] = useState('')
+  const [joinPassword, setJoinPassword] = useState('')
+  const [showJoinPassword, setShowJoinPassword] = useState(false)
+  const [joining, setJoining] = useState(false)
   const toast = useToast()
   const isInitialLoad = useRef(true)
   const { user, signOut } = useAuth()
@@ -281,14 +300,13 @@ function HomeContent() {
   }
 
   const fetchTodos = async () => {
-    if (!selectedWorkspaceId || !user?.id) return
+    if (!selectedWorkspaceId) return
 
     try {
       const { data, error } = await supabase
         .from('todo')
         .select('*')
         .eq('workspace_id', selectedWorkspaceId)
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -322,7 +340,7 @@ function HomeContent() {
         .insert({ 
           text: newTodo.trim(),
           workspace_id: selectedWorkspaceId,
-          user_id: user.id
+          user_id: user.id // Kullanıcı bilgisi için saklanıyor ama filtreleme yapılmıyor
         })
         .select()
         .single()
@@ -349,7 +367,7 @@ function HomeContent() {
   }
 
   const toggleTodo = async (id: number, completed: boolean) => {
-    if (!selectedWorkspaceId || !user?.id) return
+    if (!selectedWorkspaceId) return
 
     try {
       const { error } = await supabase
@@ -357,7 +375,6 @@ function HomeContent() {
         .update({ completed: !completed })
         .eq('id', id)
         .eq('workspace_id', selectedWorkspaceId)
-        .eq('user_id', user.id)
 
       if (error) throw error
       setTodos(
@@ -376,7 +393,7 @@ function HomeContent() {
   }
 
   const deleteTodo = async (id: number) => {
-    if (!selectedWorkspaceId || !user?.id) return
+    if (!selectedWorkspaceId) return
 
     try {
       const { error } = await supabase
@@ -384,7 +401,6 @@ function HomeContent() {
         .delete()
         .eq('id', id)
         .eq('workspace_id', selectedWorkspaceId)
-        .eq('user_id', user.id)
 
       if (error) throw error
       setTodos(todos.filter((todo) => todo.id !== id))
@@ -412,6 +428,101 @@ function HomeContent() {
 
   const completedCount = todos.filter((t) => t.completed).length
   const selectedWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId)
+  const settingsWorkspace = workspaces.find((w) => w.id === settingsWorkspaceId)
+
+  const openWorkspaceSettings = (workspaceId: number) => {
+    setSettingsWorkspaceId(workspaceId)
+  }
+
+  const closeWorkspaceSettings = () => {
+    setSettingsWorkspaceId(null)
+  }
+
+  const refreshWorkspaces = async () => {
+    await fetchWorkspaces()
+  }
+
+  const handleJoinWorkspace = async () => {
+    const workspaceIdNum = parseInt(joinWorkspaceId)
+    if (!workspaceIdNum || isNaN(workspaceIdNum)) {
+      toast({
+        title: 'Hata',
+        description: 'Geçerli bir workspace ID girin',
+        status: 'error',
+        duration: 3000,
+      })
+      return
+    }
+
+    setJoining(true)
+    try {
+      // Fetch workspace
+      const { data: workspaceData, error: workspaceError } = await supabase
+        .from('workspace')
+        .select('*')
+        .eq('id', workspaceIdNum)
+        .single()
+
+      if (workspaceError) throw workspaceError
+
+      if (!workspaceData) {
+        toast({
+          title: 'Hata',
+          description: 'Workspace bulunamadı',
+          status: 'error',
+          duration: 3000,
+        })
+        return
+      }
+
+      // Check if workspace is public
+      if (!workspaceData.is_public) {
+        toast({
+          title: 'Hata',
+          description: 'Bu workspace public değil',
+          status: 'error',
+          duration: 3000,
+        })
+        return
+      }
+
+      // Check password if required
+      if (workspaceData.password) {
+        if (joinPassword.trim() !== workspaceData.password) {
+          toast({
+            title: 'Hata',
+            description: 'Şifre yanlış',
+            status: 'error',
+            duration: 3000,
+          })
+          return
+        }
+        // Store password in localStorage
+        localStorage.setItem(`workspace_access_${workspaceIdNum}`, joinPassword.trim())
+      }
+
+      // Redirect to public workspace page
+      router.push(`/workspace/${workspaceIdNum}`)
+      toast({
+        title: 'Başarılı',
+        description: 'Workspace\'e katıldınız',
+        status: 'success',
+        duration: 2000,
+      })
+      setShowJoinModal(false)
+      setJoinWorkspaceId('')
+      setJoinPassword('')
+    } catch (error: any) {
+      toast({
+        title: 'Hata',
+        description: error?.message || 'Workspace\'e katılırken bir hata oluştu',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setJoining(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -457,14 +568,24 @@ function HomeContent() {
               </Text>
             )}
           </VStack>
-          <Button
-            colorScheme="red"
-            variant="outline"
-            onClick={handleLogout}
-            size="md"
-          >
-            Çıkış Yap
-          </Button>
+          <HStack spacing={3}>
+            <Button
+              colorScheme="teal"
+              variant="outline"
+              onClick={() => setShowJoinModal(true)}
+              size="md"
+            >
+              Workspace'e Katıl
+            </Button>
+            <Button
+              colorScheme="red"
+              variant="outline"
+              onClick={handleLogout}
+              size="md"
+            >
+              Çıkış Yap
+            </Button>
+          </HStack>
         </Flex>
 
         {/* Workspace Management */}
@@ -609,6 +730,7 @@ function HomeContent() {
                                   : 'gray.300'
                               }
                             />
+                            <HStack spacing={2}>
                             <Text
                               fontWeight={
                                 selectedWorkspaceId === workspace.id
@@ -622,13 +744,33 @@ function HomeContent() {
                               }
                               fontSize="md"
                             >
-                              {workspace.name || 'Adsız alan'}
+                              {workspace.name || 'Adsız alan'} <Text as="span" fontSize="xs" color="gray.400">(ID: {workspace.id})</Text>
                             </Text>
+                              {workspace.is_public && (
+                                <Badge colorScheme="green" fontSize="xs">
+                                  Public
+                                </Badge>
+                              )}
+                              {workspace.password && (
+                                <LockIcon color="orange.500" boxSize={3} />
+                              )}
+                            </HStack>
                           </>
                         )}
                       </HStack>
                       {editingWorkspaceId !== workspace.id && (
                         <HStack spacing={1}>
+                          <IconButton
+                            aria-label="Ayarlar"
+                            icon={<SettingsIcon />}
+                            size="sm"
+                            colorScheme="teal"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openWorkspaceSettings(workspace.id)
+                            }}
+                          />
                           <IconButton
                             aria-label="Düzenle"
                             icon={<EditIcon />}
@@ -720,7 +862,7 @@ function HomeContent() {
             align="center"
           >
             <Text fontWeight="semibold" color="gray.600">
-              {selectedWorkspace ? `${selectedWorkspace.name || 'Adsız alan'} - Görevlerim` : 'Görevlerim'}
+              {selectedWorkspace ? `${selectedWorkspace.name || 'Adsız alan'} (ID: ${selectedWorkspace.id}) - Görevlerim` : 'Görevlerim'}
             </Text>
             <HStack spacing={4}>
               <Text fontSize="sm" color="gray.500">
@@ -801,6 +943,77 @@ function HomeContent() {
           toedo ile görevlerini takip et ✨
         </Text>
       </Container>
+
+      {/* Workspace Settings Drawer */}
+      {settingsWorkspace && (
+        <WorkspaceSettings
+          isOpen={settingsWorkspaceId !== null}
+          onClose={closeWorkspaceSettings}
+          workspace={settingsWorkspace}
+          onUpdate={refreshWorkspaces}
+        />
+      )}
+
+      {/* Join Workspace Modal */}
+      <Modal isOpen={showJoinModal} onClose={() => setShowJoinModal(false)} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Workspace'e Katıl</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4}>
+              <FormControl>
+                <FormLabel>Workspace ID</FormLabel>
+                <Input
+                  placeholder="Workspace ID girin"
+                  value={joinWorkspaceId}
+                  onChange={(e) => setJoinWorkspaceId(e.target.value)}
+                  type="number"
+                />
+              </FormControl>
+              <FormControl>
+                <FormLabel>Şifre (Eğer şifreli ise)</FormLabel>
+                <InputGroup>
+                  <Input
+                    type={showJoinPassword ? 'text' : 'password'}
+                    placeholder="Şifre girin (opsiyonel)"
+                    value={joinPassword}
+                    onChange={(e) => setJoinPassword(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleJoinWorkspace()
+                      }
+                    }}
+                  />
+                  <InputRightElement width="4.5rem">
+                    <IconButton
+                      aria-label={showJoinPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                      icon={showJoinPassword ? <ViewOffIcon /> : <ViewIcon />}
+                      onClick={() => setShowJoinPassword(!showJoinPassword)}
+                      variant="ghost"
+                      size="sm"
+                      h="1.75rem"
+                    />
+                  </InputRightElement>
+                </InputGroup>
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={() => setShowJoinModal(false)}>
+              İptal
+            </Button>
+            <Button
+              colorScheme="teal"
+              onClick={handleJoinWorkspace}
+              isLoading={joining}
+              isDisabled={!joinWorkspaceId.trim()}
+            >
+              Katıl
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   )
 }
